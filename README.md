@@ -79,9 +79,9 @@ CREATE TABLE entries (
 );
 ```
 
-A word is glossed when `difficulty <= hint level`. Lookups fall back to a few
-cheap English de-inflections (plurals, `-ed`, `-ing`, `-ly`) so inflected forms
-in the text still match base-form entries.
+A word is glossed when `difficulty <= hint level`. Exact headwords from the
+selected dictionary take priority; conservative English inflection rules let
+forms such as `studied`, `walked`, and `running` match their base headwords.
 
 ## How the bundled dictionary is built
 

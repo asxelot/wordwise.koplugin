@@ -30,52 +30,53 @@ local function shorten(def)
     return def
 end
 
--- Common nouns/adjectives that happen to end in a stripped suffix but are NOT
--- inflected forms of something else -- de-inflecting them risks landing on an
--- unrelated real dictionary word (e.g. morning -> morn, an archaic word that
--- happens to be defined as "morning", making morning look like it defines
--- itself; passing -> passe, an unrelated word meaning "no longer fashionable").
--- Over-generation is normally harmless since candidates must resolve to a real
--- entry, but these specific collisions are real entries, so it isn't.
-local NO_DEINFLECT = {
-    morning = true, evening = true, passing = true,
-}
-
--- The dictionary is keyed by lemma (base form). Book text carries inflected
--- forms, so on a miss we try a few cheap English de-inflections. Order matters:
--- more specific rules first. Candidates are only accepted if they resolve to a
--- real entry, so over-generation is normally harmless (see NO_DEINFLECT above
--- for the exceptions).
+-- Generate only plausible English lemma (base form), with spelling-change rules before
+-- the generic suffix rules. In particular, married/studied must become marry/study,
+-- never marri/studi (which may be unrelated dictionary lemma).
 local function candidates(w)
-    if NO_DEINFLECT[w] then return { w } end
     local out = { w }
+    local seen = { [w] = true }
+    local function add(s)
+        if s and #s >= 3 and not seen[s] then
+            seen[s] = true
+            out[#out + 1] = s
+        end
+    end
     local n = #w
-    local function add(s) if s and #s >= 3 then out[#out + 1] = s end end
+
     if n >= 5 and w:sub(-3) == "ies" then
         add(w:sub(1, n - 3) .. "y")            -- studies -> study
-    end
-    if n >= 5 and w:sub(-2) == "es" then
+    elseif n >= 5 and w:sub(-2) == "es" then
         add(w:sub(1, n - 2))                   -- boxes -> box
-    end
-    if n >= 4 and w:sub(-1) == "s" then
+    elseif n >= 4 and w:sub(-1) == "s" then
         add(w:sub(1, n - 1))                   -- traditions -> tradition
     end
+
     if n >= 5 and w:sub(-2) == "ly" then
         add(w:sub(1, n - 2))                   -- splendidly -> splendid
     end
-    if n >= 5 and w:sub(-2) == "ed" then
-        add(w:sub(1, n - 1))                   -- glimpsed -> glimpse
-        add(w:sub(1, n - 2))                   -- walked -> walk
-        if w:sub(n - 2, n - 2) == w:sub(n - 3, n - 3) then
-            add(w:sub(1, n - 3))               -- stopped -> stop
+
+    if n >= 5 and w:sub(-3) == "ied" then
+        add(w:sub(1, n - 3) .. "y")            -- married -> marry
+    elseif n >= 4 and w:sub(-2) == "ed" then
+        local stem = w:sub(1, n - 2)
+        add(w:sub(1, n - 1))                   -- loved -> love
+        if #stem >= 2 and stem:sub(-1) == stem:sub(-2, -2) then
+            add(stem:sub(1, -2))               -- stopped -> stop
         end
+        add(stem)                               -- walked -> walk
     end
-    if n >= 6 and w:sub(-3) == "ing" then
-        add(w:sub(1, n - 3))                   -- hurrying -> hurry, going -> go
-        add(w:sub(1, n - 3) .. "e")            -- making -> make
-        if w:sub(n - 3, n - 3) == w:sub(n - 4, n - 4) then
-            add(w:sub(1, n - 4))               -- running -> run
+
+    if n >= 5 and w:sub(-3) == "ing" then
+        local stem = w:sub(1, n - 3)
+        if w:sub(-4) == "ying" then
+            add(w:sub(1, n - 4) .. "ie")       -- lying -> lie
         end
+        add(stem .. "e")                       -- making -> make
+        if #stem >= 2 and stem:sub(-1) == stem:sub(-2, -2) then
+            add(stem:sub(1, -2))               -- running -> run
+        end
+        add(stem)                               -- hurrying -> hurry
     end
     return out
 end
@@ -121,8 +122,6 @@ function WordWiseDB:_query(key)
     return result
 end
 
--- Return { gloss = <string>, difficulty = <int> } or nil. Cached per surface
--- word (including negative results). Tries the word, then de-inflected forms.
 function WordWiseDB:lookup(word)
     local key = word:lower()
     local cached = self.cache[key]
@@ -138,6 +137,9 @@ function WordWiseDB:lookup(word)
     return result
 end
 
+
+-- Return { gloss = <string>, difficulty = <int> } or nil. Cached per surface
+-- word (including negative results). Tries the word, then de-inflected forms.
 function WordWiseDB:close()
     if self.stmt then pcall(function() self.stmt:close() end) end
     if self.conn then pcall(function() self.conn:close() end) end
